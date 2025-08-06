@@ -478,6 +478,11 @@ if (document.readyState === 'loading') {
   originalCharset = document.charset || document.characterSet;
 }
 
+// Check if this is a TeamCity log file (for UI hints, not auto-decode)
+function isTeamCityLogFile() {
+  return location.href.match(/https:\/\/teamcity\.cockroachdb\.com\/.*\.log$/);
+}
+
 // Notify background script about page load and detected encoding
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
   setTimeout(() => {
@@ -489,6 +494,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
     }).catch(() => {
       // Ignore errors if background script is not ready
     });
+    
   }, 100);
 } else {
   document.addEventListener('DOMContentLoaded', () => {
@@ -501,6 +507,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
       }).catch(() => {
         // Ignore errors if background script is not ready
       });
+      
     }, 100);
   });
 }

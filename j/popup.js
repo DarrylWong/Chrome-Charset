@@ -64,7 +64,8 @@ chrome.tabs.query({ active: true, currentWindow: true }, async tabs => {
       const result = await chrome.runtime.sendMessage({
         type: 'decodeInNewTab',
         tabId: tab.id,
-        encoding: 'UTF-8'
+        encoding: 'UTF-8',
+        closeOriginal: true  // Close the original tab after creating UTF-8 version
       });
       
       if (result && result.success) {

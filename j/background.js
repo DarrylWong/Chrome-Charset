@@ -149,7 +149,7 @@ const createDecodedContentHTML = (content, encoding, originalUrl, originalEncodi
       padding: 0;
       white-space: pre-wrap;
       word-wrap: break-word;
-      font-family: 'Regio Mono';
+      font-family: 'Regio Mono',monospace;
       font-size: 9pt;
     }
   </style>
@@ -246,6 +246,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           
         case 'decodeInNewTab':
           await createDecodedContentTab(message.tabId, message.encoding);
+          
+          // Close original tab if requested
+          if (message.closeOriginal) {
+            try {
+              await chrome.tabs.remove(message.tabId);
+              console.log('Original tab closed after creating UTF-8 version');
+            } catch (error) {
+              console.error('Failed to close original tab:', error);
+            }
+          }
+          
+          sendResponse({ success: true });
+          break;
+          
+        case 'autoDecodeInNewTab':
+          // Auto-decode from content script (no tabId needed, use sender.tab.id)
+          await createDecodedContentTab(sender.tab.id, message.encoding);
+          
+          // Close original tab if requested
+          if (message.closeOriginal) {
+            try {
+              await chrome.tabs.remove(sender.tab.id);
+              console.log('Original TeamCity log tab closed');
+            } catch (error) {
+              console.error('Failed to close original tab:', error);
+            }
+          }
+          
           sendResponse({ success: true });
           break;
           

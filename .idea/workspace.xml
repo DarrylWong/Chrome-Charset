@@ -4,7 +4,12 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="4fe53596-a883-42b0-8669-132cf4d34db3" name="Changes" comment="" />
+    <list default="true" id="4fe53596-a883-42b0-8669-132cf4d34db3" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/j/background.js" beforeDir="false" afterPath="$PROJECT_DIR$/j/background.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/j/content-script.js" beforeDir="false" afterPath="$PROJECT_DIR$/j/content-script.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/j/popup.js" beforeDir="false" afterPath="$PROJECT_DIR$/j/popup.js" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
