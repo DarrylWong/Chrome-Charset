@@ -1,10 +1,30 @@
 /**
  * Created by Liming on 2017/3/22.
+ * Updated for MV3 - removed localStorage dependency
  */
-const recentlySelectedEncodingList = (localStorage.getItem('recent') || '').split(',');
-const LocaleDependentStaticEncodingList = (chrome.i18n.getMessage('staticEncodingList') || '').split(',');
-//Encoding List
-const ENCODINGS = [
+
+// Initialize empty arrays - will be populated asynchronously in service worker
+let recentlySelectedEncodingList = [];
+let LocaleDependentStaticEncodingList = [];
+
+// Function to initialize encoding lists (to be called from service worker)
+const initializeEncodingLists = async () => {
+  try {
+    // Get recent encodings from chrome.storage
+    const result = await chrome.storage.local.get(['recent']);
+    recentlySelectedEncodingList = (result.recent || '').split(',').filter(e => e);
+    
+    // Get locale dependent encodings
+    LocaleDependentStaticEncodingList = (chrome.i18n.getMessage('staticEncodingList') || '').split(',').filter(e => e);
+  } catch (error) {
+    console.error('Error initializing encoding lists:', error);
+    recentlySelectedEncodingList = [];
+    LocaleDependentStaticEncodingList = [];
+  }
+};
+
+// Base encoding list
+const BASE_ENCODINGS = [
   ['<hr>'],
   ['Big5', chrome.i18n.getMessage('encodingChineseTraditional')],
   ['GBK', chrome.i18n.getMessage('encodingChineseSimplified')],
@@ -42,32 +62,41 @@ const ENCODINGS = [
   ['Windows-1256', chrome.i18n.getMessage('encodingArabic')],
   ['Windows-1257', chrome.i18n.getMessage('encodingBaltic')],
   ['Windows-1258', chrome.i18n.getMessage('encodingVietnamese')],
-].sort(([a, nameA], [b, nameB]) => {
-  // we always put UTF-8 as top position
-  if (a === 'UTF-8') return -1;
-  if (b === 'UTF-8') return 1;
-  // then put local dependent encoding items
-  {
-    const hasA = LocaleDependentStaticEncodingList.indexOf(a);
-    const hasB = LocaleDependentStaticEncodingList.indexOf(b);
-    if (hasA >= 0 && hasB >= 0) return hasA > hasB ? 1 : -1;
-    if (hasA >= 0) return -1;
-    if (hasB >= 0) return 1;
-  }
-  // then put user recently selected encodings
-  {
-    const hasA = recentlySelectedEncodingList.indexOf(a);
-    const hasB = recentlySelectedEncodingList.indexOf(b);
-    if (hasA >= 0 && hasB >= 0) return hasA > hasB ? 1 : -1;
-    if (hasA >= 0) return -1;
-    if (hasB >= 0) return 1;
-  }
-  // then put a delimiter
-  if (a === '<hr>') return -1;
-  if (b === '<hr>') return 1;
-  // then put UTF-16LE
-  if (a === 'UTF-16LE') return -1;
-  if (b === 'UTF-16LE') return 1;
-  // sort all left encodings by their name
-  return nameA.localeCompare(nameB, chrome.i18n.getUILanguage());
-});
+];
+
+// Function to get sorted encoding list
+const getEncodingList = () => {
+  return BASE_ENCODINGS.slice().sort(([a, nameA], [b, nameB]) => {
+    // we always put UTF-8 as top position
+    if (a === 'UTF-8') return -1;
+    if (b === 'UTF-8') return 1;
+    // then put local dependent encoding items
+    {
+      const hasA = LocaleDependentStaticEncodingList.indexOf(a);
+      const hasB = LocaleDependentStaticEncodingList.indexOf(b);
+      if (hasA >= 0 && hasB >= 0) return hasA > hasB ? 1 : -1;
+      if (hasA >= 0) return -1;
+      if (hasB >= 0) return 1;
+    }
+    // then put user recently selected encodings
+    {
+      const hasA = recentlySelectedEncodingList.indexOf(a);
+      const hasB = recentlySelectedEncodingList.indexOf(b);
+      if (hasA >= 0 && hasB >= 0) return hasA > hasB ? 1 : -1;
+      if (hasA >= 0) return -1;
+      if (hasB >= 0) return 1;
+    }
+    // then put a delimiter
+    if (a === '<hr>') return -1;
+    if (b === '<hr>') return 1;
+    // then put UTF-16LE
+    if (a === 'UTF-16LE') return -1;
+    if (b === 'UTF-16LE') return 1;
+    // sort all left encodings by their name
+    return nameA.localeCompare(nameB, chrome.i18n.getUILanguage());
+  });
+};
+
+// Export the base list for popup and options pages
+// They will use BASE_ENCODINGS since they can't access the sorted version easily
+const ENCODINGS = BASE_ENCODINGS;

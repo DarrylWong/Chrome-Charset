@@ -6,17 +6,17 @@
   <meta name="author" content="金黎明,Liming Jin,jinliming2@gmail.com,Tianjin China">
   <link rel="stylesheet" href="./c/colour.css">
   <link rel="stylesheet" href="./c/popup.css">
-  <script src="./j/encoding.js" defer></script>
   <script src="./j/popup.js" defer></script>
 </head>
 <body>
   <div class="line">
-    <span id="tip-current"></span>
+    <span id="tip-current">Current encoding:</span>
     <span id="current"></span>
   </div>
-  <div id="default-tip" class="line tip"></div>
-  <button type="button" id="reset"></button>
+  <div id="encoding-info" class="line tip"></div>
   <hr>
-  <div id="list"></div>
+  <button type="button" id="decode-utf8" style="width: 100%; padding: 10px; font-size: 14px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer;">
+    📄 View as UTF-8 in New Tab
+  </button>
 </body>
 </html>

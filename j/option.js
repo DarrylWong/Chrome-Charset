@@ -31,42 +31,55 @@ for (const encodingInfo of ENCODINGS) {
   optgroup[index].appendChild(option);
 }
 optgroup.forEach(o => list.appendChild(o));
-// Current Setting
-const contextMenuButton = document.getElementById('context-menu');
-if (contextMenuButton instanceof HTMLInputElement) {
-  contextMenuButton.checked = (localStorage.getItem('config_menu') === 'true');
-}
-if (list instanceof HTMLSelectElement) {
-  list.value = localStorage.getItem('config_enable_default') || '';
-}
+// Current Setting - Load from chrome.storage
+(async () => {
+  try {
+    const result = await chrome.storage.local.get(['config_menu', 'config_enable_default']);
+    
+    const contextMenuButton = document.getElementById('context-menu');
+    if (contextMenuButton instanceof HTMLInputElement) {
+      contextMenuButton.checked = (result.config_menu === 'true');
+    }
+    
+    if (list instanceof HTMLSelectElement) {
+      list.value = result.config_enable_default || '';
+    }
+  } catch (error) {
+    console.error('Error loading settings:', error);
+  }
+})();
 // Fix RTL mode display
 if (rtl) {
   list.style.backgroundPosition = '8px';
 }
 // Change Events
-document.body.addEventListener('change', e => {
-  if (e.target instanceof HTMLInputElement) {
-    if (e.target.id === 'context-menu') {
-      if (e.target.checked) {
-        localStorage.setItem('config_menu', 'true');
-        chrome.runtime.sendMessage({ type: 'createMenu' });
-      } else {
-        localStorage.removeItem('config_menu');
-        chrome.runtime.sendMessage({ type: 'removeMenu' });
+document.body.addEventListener('change', async (e) => {
+  try {
+    if (e.target instanceof HTMLInputElement) {
+      if (e.target.id === 'context-menu') {
+        if (e.target.checked) {
+          await chrome.storage.local.set({ config_menu: 'true' });
+          await chrome.runtime.sendMessage({ type: 'createMenu' });
+        } else {
+          await chrome.storage.local.remove(['config_menu']);
+          await chrome.runtime.sendMessage({ type: 'removeMenu' });
+        }
+        return;
       }
-      return;
     }
-  }
-  if (e.target instanceof HTMLSelectElement) {
-    if (e.target.id === 'default-encoding-list') {
-      if (e.target.value) {
-        localStorage.setItem('config_enable_default', e.target.value);
-        chrome.runtime.sendMessage({ type: 'setupDefaultEncoding' });
-      } else {
-        localStorage.removeItem('config_enable_default');
-        chrome.runtime.sendMessage({ type: 'unsetDefaultEncoding' });
+    if (e.target instanceof HTMLSelectElement) {
+      if (e.target.id === 'default-encoding-list') {
+        if (e.target.value) {
+          await chrome.storage.local.set({ config_enable_default: e.target.value });
+          await chrome.runtime.sendMessage({ type: 'setupDefaultEncoding' });
+        } else {
+          await chrome.storage.local.remove(['config_enable_default']);
+          await chrome.runtime.sendMessage({ type: 'unsetDefaultEncoding' });
+        }
+        return;
       }
-      return;
     }
+  } catch (error) {
+    console.error('Error saving settings:', error);
   }
 });

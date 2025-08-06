@@ -1,185 +1,310 @@
 /**
+ * Background service worker for Chrome Charset extension - Manifest V3
  * Created by Liming on 2017/2/14.
+ * Updated for MV3 compatibility
  */
-const charsetPattern = /; ?charset=([^;]+)/i;
-const html_special_chars = html => html
-  .replace(/&/g, '&gt;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/ /g, '&nbsp;')
-  .replace(/'/g, '&#39;')
-  .replace(/"/g, '&quot;')
-  .replace(/\r\n?|\n/g, '<br>');
-const recordRecentlySelectedEncoding = encoding => {
-  const recent = (localStorage.getItem('recent') || '')
+
+// Import encoding data and menu functionality
+importScripts('encoding.js', 'menu.js');
+
+// Storage for encoding settings per tab
+const tabEncodings = new Map();
+let defaultEncoding = null;
+
+// Utility functions
+const recordRecentlySelectedEncoding = async (encoding) => {
+  const result = await chrome.storage.local.get(['recent']);
+  const recent = (result.recent || '')
     .split(',')
     .filter(e => e && e !== encoding)
     .slice(0, 2);
-  localStorage.setItem('recent', [encoding, ...recent].join(','));
-};
-
-const options = [
-  chrome.webRequest.OnHeadersReceivedOptions.BLOCKING,
-  chrome.webRequest.OnHeadersReceivedOptions.RESPONSE_HEADERS,
-];
-if(chrome.webRequest.OnBeforeSendHeadersOptions.hasOwnProperty('EXTRA_HEADERS')) {
-  options.push(chrome.webRequest.OnHeadersReceivedOptions.EXTRA_HEADERS);
-}
-
-const encodingList = new Map();
-const listeners = new Map();
-let defaultEncoding;
-let defaultListener;
-
-const getHeaderModifier = () => details => {
-  const encoding = encodingList.get(details.tabId) || defaultEncoding;
-  if (!encoding) {
-    return;
-  }
-  let found = false;
-  for (const responseHeader of details.responseHeaders) {
-    if (responseHeader.name.toLowerCase() !== 'content-type') {
-      continue;
-    }
-    found = true;
-    let value = responseHeader.value.toLowerCase();
-    if(
-      ['main_frame', 'sub_frame', 'stylesheet', 'script', 'xmlhttprequest'].includes(details.type) ||
-      value.startsWith('text') ||
-      value.startsWith('application/javascript') ||
-      value.startsWith('application/x-javascript') ||
-      value.startsWith('application/json')
-    ) {
-      if(charsetPattern.test(value)) {
-        value = value.replace(charsetPattern.exec(value)[1], encoding);
-      } else {
-        value += value.substr(-1) === ';' ? ' ' : '; ';
-        value += `charset=${encoding}`;
-      }
-      responseHeader.value = value;
-    }
-    break;
-  }
-  if (!found) {
-    details.responseHeaders.push({
-      name: 'Content-Type',
-      value: `text/plain; charset=${encoding}`,
-    });
-  }
-  return { responseHeaders: details.responseHeaders };
-};
-
-const bodyModifier = (tabId, changeInfo, tab) => {
-  if (!tab.url.toLowerCase().startsWith('file://')) {
-    return;
-  }
-  if (changeInfo.status.toLowerCase() !== 'complete') {
-    return;
-  }
-  const encoding = encodingList.get(tabId) || defaultEncoding;
-  if (!encoding) {
-    return;
-  }
-  let xmlHttp = new XMLHttpRequest();
-  xmlHttp.overrideMimeType(`text/plain; charset=${encoding}`);
-  xmlHttp.onload = () => {
-    localStorage.removeItem('alertedCannotLoadLocalFile');
-    const is_html = /\.html?$/.test(tab.url);
-    const data = is_html ? encodeURIComponent(xmlHttp.responseText) : encodeURIComponent(html_special_chars(xmlHttp.responseText));
-    chrome.tabs.executeScript(tabId, {
-      code: `const _t = document.open('text/${is_html ? 'html' : 'plain'}', 'replace');
-      _t.write(${is_html ? `decodeURIComponent('${data}')` : `'<pre>' + decodeURIComponent('${data}') + '</pre>'`});
-      _t.close();`,
-      runAt: 'document_start',
-    });
-  };
-  xmlHttp.onerror = () => {
-    if (localStorage.getItem('alertedCannotLoadLocalFile')) {
-      return;
-    }
-    localStorage.setItem('alertedCannotLoadLocalFile', '1');
-    alert(chrome.i18n.getMessage('cannotLoadLocalFile'));
-  };
-  xmlHttp.open('GET', tab.url, true);
-  xmlHttp.send();
-};
-
-const setEncoding = (tabId, encoding) => {
-  encodingList.set(tabId, encoding);
-  recordRecentlySelectedEncoding(encoding);
-  if (defaultEncoding) {
-    return;
-  }
-  if (listeners.size === 0) {
-    chrome.tabs.onUpdated.addListener(bodyModifier);
-  }
-  if (!listeners.has(tabId)) {
-    const headerModifier = getHeaderModifier();
-    listeners.set(tabId, headerModifier);
-    chrome.webRequest.onHeadersReceived.addListener(headerModifier, { urls: ['<all_urls>'], tabId }, options);
-  }
-};
-
-const resetEncoding = tabId => {
-  const callback = listeners.get(tabId);
-  if (callback) {
-    chrome.webRequest.onHeadersReceived.removeListener(callback);
-    listeners.delete(tabId);
-  }
-  encodingList.delete(tabId);
-  if (defaultEncoding) {
-    return;
-  }
-  if (listeners.size === 0) {
-    chrome.tabs.onUpdated.removeListener(bodyModifier);
-  }
-};
-
-const getEncoding = tabId => encodingList.get(tabId) || defaultEncoding;
-
-const setupDefaultEncoding = () => {
-  defaultEncoding = localStorage.getItem('config_enable_default');
-  if (!defaultEncoding) {
-    return;
-  }
-  if (listeners.size === 0) {
-    chrome.tabs.onUpdated.addListener(bodyModifier);
-  }
-  listeners.forEach((callback, tabId) => {
-    chrome.webRequest.onHeadersReceived.removeListener(callback);
-    listeners.delete(tabId);
+  
+  await chrome.storage.local.set({
+    recent: [encoding, ...recent].join(',')
   });
-  if (!defaultListener) {
-    defaultListener = getHeaderModifier();
+  
+  // Update the encoding lists for menu sorting
+  await initializeEncodingLists();
+};
+
+// Main encoding management functions
+const setEncoding = async (tabId, encoding) => {
+  tabEncodings.set(tabId, encoding);
+  await recordRecentlySelectedEncoding(encoding);
+  
+  // Notify content script about encoding change
+  try {
+    await chrome.tabs.sendMessage(tabId, {
+      type: 'setPageEncoding',
+      encoding: encoding
+    });
+  } catch (error) {
+    console.log('Could not send message to content script:', error);
   }
-  chrome.webRequest.onHeadersReceived.addListener(defaultListener, { urls: ['<all_urls>'] }, options);
+};
+
+const resetEncoding = (tabId) => {
+  tabEncodings.delete(tabId);
+};
+
+const getEncoding = (tabId) => {
+  return tabEncodings.get(tabId) || defaultEncoding;
+};
+
+// Setup default encoding from storage
+const setupDefaultEncoding = async () => {
+  const result = await chrome.storage.local.get(['config_enable_default']);
+  defaultEncoding = result.config_enable_default || null;
 };
 
 const unsetDefaultEncoding = () => {
-  defaultEncoding = undefined;
-  chrome.webRequest.onHeadersReceived.removeListener(defaultListener);
-  encodingList.forEach((encoding, tabId) => {
-    if (!listeners.has(tabId)) {
-      const headerModifier = getHeaderModifier();
-      listeners.set(tabId, headerModifier);
-      chrome.webRequest.onHeadersReceived.addListener(headerModifier, { urls: ['<all_urls>'], tabId }, options);
+  defaultEncoding = null;
+};
+
+// Create new tab with UTF-8 decoded content
+const createDecodedContentTab = async (sourceTabId, encoding) => {
+  try {
+    // Get the source tab info
+    const sourceTab = await chrome.tabs.get(sourceTabId);
+    
+    let result;
+    
+    try {
+      // Try to get decoded content from content script
+      result = await chrome.tabs.sendMessage(sourceTabId, {
+        type: 'getDecodedContent',
+        encoding: encoding
+      });
+    } catch (contentScriptError) {
+      console.log('Content script not available, fetching directly...');
+      
+      // Fallback: inject content script and try again
+      try {
+        console.log('Injecting content script...');
+        await chrome.scripting.executeScript({
+          target: { tabId: sourceTabId },
+          files: ['j/content-script.js']
+        });
+        
+        // Wait a bit for content script to load
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Try again
+        result = await chrome.tabs.sendMessage(sourceTabId, {
+          type: 'getDecodedContent',
+          encoding: encoding
+        });
+      } catch (injectError) {
+        throw new Error(`Content script injection failed: ${injectError.message}`);
+      }
     }
-  });
-  if (listeners.size === 0) {
-    chrome.tabs.onUpdated.removeListener(bodyModifier);
+    
+    if (!result || !result.success) {
+      throw new Error('Failed to get decoded content');
+    }
+    
+    // Create HTML content for the new tab
+    const htmlContent = createDecodedContentHTML(
+      result.content, 
+      encoding, 
+      sourceTab.url, 
+      result.originalEncoding
+    );
+    
+    // Create data URL
+    const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent);
+    
+    // Open new tab with decoded content
+    await chrome.tabs.create({
+      url: dataUrl,
+      active: true
+    });
+    
+  } catch (error) {
+    console.error('Error creating decoded content tab:', error);
+    throw error;
   }
 };
 
+// HTML escape helper
+const escapeHtml = (text) => {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
+
+// Create HTML content for the decoded content tab
+const createDecodedContentHTML = (content, encoding, originalUrl, originalEncoding) => {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>UTF-8 Content</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      font-family: 'Regio Mono', 'Regio Mono Regular', 'SF Mono', 'Monaco', 'Menlo', 'Courier New', monospace;
+      font-size: 9pt;
+    }
+  </style>
+</head>
+<body>${escapeHtml(content)}</body>
+</html>`;
+};
+
+// Handle file:// URLs by injecting content with proper encoding
+const handleFileUrl = async (tabId, encoding) => {
+  try {
+    // Get the tab to access its URL
+    const tab = await chrome.tabs.get(tabId);
+    
+    if (!tab.url.toLowerCase().startsWith('file://')) {
+      return;
+    }
+
+    // For file URLs, we can try to re-read the file content
+    // This is a limited workaround since we can't modify headers in MV3
+    await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      func: (selectedEncoding) => {
+        // Try to reload the page with a hint about the encoding
+        // This is limited but better than nothing
+        if (document.readyState === 'loading') {
+          // Add charset meta tag if page is still loading
+          const metaCharset = document.createElement('meta');
+          metaCharset.setAttribute('charset', selectedEncoding);
+          if (document.head) {
+            document.head.insertBefore(metaCharset, document.head.firstChild);
+          }
+        } else {
+          // Page already loaded - notify user that reload is needed
+          console.log(`Encoding changed to ${selectedEncoding}. Page reload may be required for full effect.`);
+        }
+      },
+      args: [encoding]
+    });
+  } catch (error) {
+    console.error('Error handling file URL:', error);
+  }
+};
+
+// Message handling
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  switch(message.type) {
-    case 'setEncoding': sendResponse(setEncoding(message.tabId, message.encoding)); break;
-    case 'resetEncoding': sendResponse(resetEncoding(message.tabId)); break;
-    case 'getEncoding': sendResponse(getEncoding(message.tabId)); break;
-    case 'createMenu': removeMenu(); sendResponse(createMenu()); break;
-    case 'removeMenu': sendResponse(removeMenu()); break;
-    case 'setupDefaultEncoding': unsetDefaultEncoding(); sendResponse(setupDefaultEncoding()); break;
-    case 'unsetDefaultEncoding': sendResponse(unsetDefaultEncoding()); break;
+  (async () => {
+    try {
+      switch(message.type) {
+        case 'setEncoding':
+          await setEncoding(message.tabId, message.encoding);
+          await handleFileUrl(message.tabId, message.encoding);
+          sendResponse({ success: true });
+          break;
+          
+        case 'resetEncoding':
+          resetEncoding(message.tabId);
+          sendResponse({ success: true });
+          break;
+          
+        case 'getEncoding':
+          sendResponse({ encoding: getEncoding(message.tabId) });
+          break;
+          
+        case 'createMenu':
+          removeMenu();
+          createMenu();
+          sendResponse({ success: true });
+          break;
+          
+        case 'removeMenu':
+          removeMenu();
+          sendResponse({ success: true });
+          break;
+          
+        case 'setupDefaultEncoding':
+          unsetDefaultEncoding();
+          await setupDefaultEncoding();
+          sendResponse({ success: true });
+          break;
+          
+        case 'unsetDefaultEncoding':
+          unsetDefaultEncoding();
+          sendResponse({ success: true });
+          break;
+          
+        case 'getPageInfo':
+          // New message type to get detected page encoding from content script
+          sendResponse({ 
+            detectedEncoding: message.detectedEncoding,
+            selectedEncoding: getEncoding(sender.tab?.id)
+          });
+          break;
+          
+        case 'decodeInNewTab':
+          await createDecodedContentTab(message.tabId, message.encoding);
+          sendResponse({ success: true });
+          break;
+          
+        default:
+          sendResponse({ error: 'Unknown message type' });
+      }
+    } catch (error) {
+      console.error('Error handling message:', error);
+      sendResponse({ error: error.message });
+    }
+  })();
+  
+  // Return true to indicate we'll respond asynchronously
+  return true;
+});
+
+// Clean up when tabs are closed
+chrome.tabs.onRemoved.addListener((tabId) => {
+  tabEncodings.delete(tabId);
+});
+
+// Context menu click handler
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.wasChecked) {
+    return;
+  }
+  try {
+    if (info.menuItemId === 'default') {
+      resetEncoding(tab.id);
+    } else {
+      await setEncoding(tab.id, info.menuItemId);
+    }
+    chrome.tabs.reload(tab.id, { bypassCache: true });
+  } catch (error) {
+    console.error('Context menu click error:', error);
   }
 });
 
-setupDefaultEncoding();
+// Initialize
+(async () => {
+  // Initialize encoding lists first
+  await initializeEncodingLists();
+  await setupDefaultEncoding();
+  
+  // Check if context menu should be enabled
+  const result = await chrome.storage.local.get(['config_menu']);
+  if (result.config_menu === 'true') {
+    createMenu();
+  }
+})();
+
+// Handle installation and updates
+chrome.runtime.onInstalled.addListener(async (details) => {
+  if (details.reason === 'install') {
+    console.log('Chrome Charset MV3 extension installed');
+  } else if (details.reason === 'update') {
+    console.log('Extension updated to MV3');
+    
+    // Initialize encoding lists for new installation
+    await initializeEncodingLists();
+  }
+});

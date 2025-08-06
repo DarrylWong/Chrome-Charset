@@ -6,26 +6,47 @@ const printEncodingInfo = info => `${info[1]} ${rtl}(${info[0]})`;
 
 let selectedMenu;
 
-const menuClicked = (info, tab) => {
+const menuClicked = async (info, tab) => {
   if (info.wasChecked) {
     return;
   }
-  if (info.menuItemId === 'default') {
-    resetEncoding(tab.id);
-  } else {
-    setEncoding(tab.id, info.menuItemId);
+  try {
+    if (info.menuItemId === 'default') {
+      await chrome.runtime.sendMessage({ 
+        type: 'resetEncoding', 
+        tabId: tab.id 
+      });
+    } else {
+      await chrome.runtime.sendMessage({ 
+        type: 'setEncoding', 
+        tabId: tab.id, 
+        encoding: info.menuItemId 
+      });
+    }
+    chrome.tabs.reload(tab.id, { bypassCache: true });
+  } catch (error) {
+    console.error('Menu click error:', error);
   }
-  chrome.tabs.reload(tab.id, { bypassCache: true });
 };
 
-const updateMenu = tabId => {
-  const encoding = getEncoding(tabId) || 'default';
-  if (selectedMenu === encoding) {
-    return;
+const updateMenu = async (tabId) => {
+  try {
+    const response = await chrome.runtime.sendMessage({ 
+      type: 'getEncoding', 
+      tabId: tabId 
+    });
+    const encoding = response.encoding || 'default';
+    
+    if (selectedMenu === encoding) {
+      return;
+    }
+    
+    chrome.contextMenus.update(selectedMenu, { checked: false });
+    chrome.contextMenus.update(encoding, { checked: true });
+    selectedMenu = encoding;
+  } catch (error) {
+    console.error('Error updating menu:', error);
   }
-  chrome.contextMenus.update(selectedMenu, { checked: false });
-  chrome.contextMenus.update(encoding, { checked: true });
-  selectedMenu = encoding;
 };
 
 const tabUpdatedEvent = tabId => updateMenu(tabId);
@@ -44,11 +65,10 @@ const createMenu = () => {
     type: 'radio',
     id: 'default',
     title: chrome.i18n.getMessage('default'),
-    checked: true,
-    onclick: menuClicked,
+    checked: true
   });
   selectedMenu = 'default';
-  for (const encoding of ENCODINGS) {
+  for (const encoding of BASE_ENCODINGS) {
     if (encoding.length === 1) {
       continue;
     }
@@ -56,8 +76,7 @@ const createMenu = () => {
       type: 'radio',
       id: encoding[0],
       title: printEncodingInfo(encoding),
-      checked: false,
-      onclick: menuClicked,
+      checked: false
     });
   }
   chrome.tabs.onUpdated.addListener(tabUpdatedEvent);
@@ -72,6 +91,5 @@ const removeMenu = () => {
   chrome.windows.onFocusChanged.removeListener(windowsFocusedEvent);
 };
 
-if (localStorage.getItem('config_menu') === 'true') {
-  createMenu();
-}
+// Menu initialization is now handled by background script
+// which checks chrome.storage.local for config_menu setting
