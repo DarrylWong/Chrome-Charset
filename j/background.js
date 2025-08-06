@@ -149,7 +149,7 @@ const createDecodedContentHTML = (content, encoding, originalUrl, originalEncodi
       padding: 0;
       white-space: pre-wrap;
       word-wrap: break-word;
-      font-family: 'Regio Mono', 'Regio Mono Regular', 'SF Mono', 'Monaco', 'Menlo', 'Courier New', monospace;
+      font-family: 'Regio Mono';
       font-size: 9pt;
     }
   </style>

@@ -4,15 +4,7 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="4fe53596-a883-42b0-8669-132cf4d34db3" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/j/background.js" beforeDir="false" afterPath="$PROJECT_DIR$/j/background.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/j/encoding.js" beforeDir="false" afterPath="$PROJECT_DIR$/j/encoding.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/j/menu.js" beforeDir="false" afterPath="$PROJECT_DIR$/j/menu.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/j/option.js" beforeDir="false" afterPath="$PROJECT_DIR$/j/option.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/j/popup.js" beforeDir="false" afterPath="$PROJECT_DIR$/j/popup.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/manifest.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/popup.html" beforeDir="false" afterPath="$PROJECT_DIR$/popup.html" afterDir="false" />
-    </list>
+    <list default="true" id="4fe53596-a883-42b0-8669-132cf4d34db3" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
